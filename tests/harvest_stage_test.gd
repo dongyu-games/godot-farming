@@ -22,20 +22,23 @@ func _ready() -> void:
 			continue
 		var last := crop.last_stage()
 		var mature := crop.mature_stage()
-		var want := last if data.matured_at_last_frame else last - 1
-		_check("%s: 成果帧 = %d（最后一帧 %d，期望 %d）" % [data.name, mature, last, want],
-			mature == want and last >= 1)
+		_check("%s: 成果帧 = %d（最后一帧 %d 是成品）" % [data.name, mature, last],
+			mature == last - 1 and last >= 1)
 		crop.free()
 
-	# 土豆：成果帧和收成栏图标都必须是素材里的那堆土豆 (224,112)
+	# 土豆：田里停在成品的前一帧（192,112）；成品 = 最后一帧土豆堆 (224,112)
 	for data in Game.crop_datas:
 		if data.name != "potato":
 			continue
 		var pcrop := _spawn_prefab(data)
-		var tex: AtlasTexture = pcrop.sprite_frames.get_frame_texture(data.name, pcrop.mature_stage())
-		_check("potato: 成果帧是土豆堆 (224,112)",
-			tex != null and tex.region == Rect2(224, 112, 16, 16),
-			"region=%s" % (tex.region if tex != null else "null"))
+		var field_tex: AtlasTexture = pcrop.sprite_frames.get_frame_texture(data.name, pcrop.mature_stage())
+		var product_tex: AtlasTexture = pcrop.sprite_frames.get_frame_texture(data.name, pcrop.last_stage())
+		_check("potato: 田里停在成品的前一帧 (192,112)",
+			field_tex != null and field_tex.region == Rect2(192, 112, 16, 16),
+			"田里 region=%s" % (field_tex.region if field_tex != null else "null"))
+		_check("potato: 成品帧是土豆堆 (224,112)",
+			product_tex != null and product_tex.region == Rect2(224, 112, 16, 16),
+			"成品 region=%s" % (product_tex.region if product_tex != null else "null"))
 		_check("potato: 收成栏图标是土豆堆",
 			data.stages[data.stages.size() - 1].region == Rect2(224, 112, 16, 16),
 			"icon=%s" % data.stages[data.stages.size() - 1].region)
@@ -59,11 +62,13 @@ func _ready() -> void:
 	_check("帧序列单调到成果帧后停住", seen[-1] == mature0, "最后 frame=%d" % crop.frame)
 	_check("成果状态可收获", crop.is_mature(), "frame=%d" % crop.frame)
 
-	print("\n[C] 一次性作物：收获瞬间切到最后一帧，随后淡出移除")
+	print("\n[C] 一次性作物：土里不出现成品，成品直接飞走")
 	var ghosts_before := _ghost_count()
+	var field_frame_before := crop.frame
 	crop.harvest()
-	_check("收获瞬间本体停在最后一帧", crop.frame == crop.last_stage(),
-		"frame=%d/%d" % [crop.frame, crop.last_stage()])
+	_check("土里没切到成品帧", crop.frame == field_frame_before and crop.frame == crop.mature_stage(),
+		"frame=%d 成果帧=%d 成品帧=%d" % [crop.frame, crop.mature_stage(), crop.last_stage()])
+	_check("本体立刻从土里消失", not crop.visible, "visible=%s" % crop.visible)
 	_check("已从 crop_dict 移除", not Game.crop_dict.has(coord))
 	_check("生成吸收残影", _ghost_count() == ghosts_before + 1,
 		"残影 %d → %d" % [ghosts_before, _ghost_count()])
