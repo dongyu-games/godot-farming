@@ -11,9 +11,9 @@ A small pixel-art farming game made with Godot: till the soil, plant seeds, wate
 * 11 spring crops with 7-frame growth animations: asparagus, broccoli, cabbage, carrot, cauliflower, onion, parsnip, potato, rice, spring onion, strawberry
 * Day cycle: a planted crop grows one stage per game day and only if it was watered that day - rain or shine, the wet soil dries up every morning
 * Harvest animation flies into the stock panel and raises that crop's counter
+* Sound effects for tilling, watering, sowing and harvesting (`assets/audio/*.wav`), with a separate cue when a harvest drops a hidden crop, over a looping music track
 * Crop data is Resource based (`data/crops/*.tres`): add a new crop by adding one resource file, and edit every crop in a single table with the bundled "Edit Resources as Table" editor plugin
 * TODO:
-  - Sound effects and music
   - More crops and seasons
   - Save and load
 

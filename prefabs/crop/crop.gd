@@ -156,8 +156,11 @@ func harvest() -> void:
 	var amount: int = data.yield_amount * (2 if is_golden else 1)
 	Game.add_stock(data.name, amount)
 	# 隐藏作物掉落（带保底），比如薄荷有 3% 概率掉"蓝薄荷"
+	var got_hidden := false
 	if data.hidden_drop != "" and data.hidden_drop_chance > 0.0:
-		Game.roll_hidden_drop(data.hidden_drop, data.hidden_drop_chance)
+		got_hidden = Game.roll_hidden_drop(data.hidden_drop, data.hidden_drop_chance)
+	# 真掉出隐藏作物时换"收获隐藏作物"那一声，不用盯收成栏也知道中了
+	Game.play_sfx("harvest_hidden" if got_hidden else "harvest")
 
 	# 本体留在成果形态（成品只在飞行残影里出现，不落在土里）
 	ripe_days = 0
