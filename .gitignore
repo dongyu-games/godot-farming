@@ -11,3 +11,5 @@ Desktop.ini
 *.bak
 docs/screenshot.jpg.import
 .vscode/
+game.pck
+*.exe
