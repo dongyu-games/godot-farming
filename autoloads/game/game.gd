@@ -13,6 +13,27 @@ const EMPTY_SOIL_LIMIT := 3
 ## 底部 HUD 栏高度（像素）。世界画面只画在栏的上方，所以栏目不会压住任何作物。
 const HUD_HEIGHT := 56
 
+## —— 音效 ——
+## 素材在 assets/audio 下：16-bit / 48 kHz / 立体声 wav，都是单发短音效（不循环）
+const SFX_FILES := {
+	"till": "res://assets/audio/till.wav",
+	"water": "res://assets/audio/water.wav",
+	"sow": "res://assets/audio/sow.wav",
+	"harvest": "res://assets/audio/harvest.wav",
+	"harvest_hidden": "res://assets/audio/harvest_hidden.wav",
+}
+## 每个音效的基准音量（dB）。素材原始响度差挺多（浇水那声峰值比锄地低 7 dB），
+## 这里按"听起来一样响"拉平；想整体调音只改这张表即可。
+const SFX_DB := {
+	"till": -7.0,
+	"water": -2.0,
+	"sow": -5.0,
+	"harvest": -5.0,
+	"harvest_hidden": -4.0,
+}
+## 每个音效同时能叠几个播放器（连点锄头时前后两声不会互相掐断）
+const SFX_VOICES := 3
+
 ## 世界上方可视区（子视口）尺寸，由视口大小减掉栏目得出
 var view_container: SubViewportContainer
 var view: SubViewport
@@ -24,6 +45,9 @@ var _panning := false
 var day_label: Label
 ## 背景音乐播放器（game.tscn 里的 Bgm 节点）
 var bgm: AudioStreamPlayer
+## 音效播放器：名字 → AudioStreamPlayer 数组；_sfx_next 记下一次轮到第几个
+var _sfx_players: Dictionary = {}
+var _sfx_next: Dictionary = {}
 ## 隐藏作物：初始隐形的 UI 节点（crop_name → 节点数组），以及掉落保底计数
 var _hidden_entries: Dictionary = {}
 var _drop_pity: Dictionary = {}
@@ -70,6 +94,8 @@ func _ready() -> void:
 	if bgm != null and bgm.stream is AudioStreamOggVorbis:
 		(bgm.stream as AudioStreamOggVorbis).loop = true
 
+	_build_sfx()
+
 	progress_time.max_value = max_time
 	selected_tool = tool_selection_pool.get_child(0)
 
@@ -104,6 +130,39 @@ func _ready() -> void:
 
 	time = 0
 	timer_time.timeout.connect(_on_tick)
+
+
+## 音效播放器在运行时建，不写进 game.tscn：换素材只改 SFX_FILES 一处。
+## 一个名字建 SFX_VOICES 个播放器轮着用，快速连点时前后两声能叠上。
+func _build_sfx() -> void:
+	var root := Node.new()
+	root.name = "Sfx"
+	add_child(root)
+	for key in SFX_FILES:
+		var stream := load(SFX_FILES[key]) as AudioStream
+		if stream == null:
+			push_warning("音效找不到：%s" % SFX_FILES[key])
+			continue
+		var players: Array[AudioStreamPlayer] = []
+		for i in SFX_VOICES:
+			var player := AudioStreamPlayer.new()
+			player.name = "%s_%d" % [key, i]
+			player.stream = stream
+			player.volume_db = SFX_DB.get(key, 0.0)
+			root.add_child(player)
+			players.append(player)
+		_sfx_players[key] = players
+		_sfx_next[key] = 0
+
+
+## 播一声音效（名字见 SFX_FILES）。素材缺失时静默跳过，不会打断玩法。
+func play_sfx(key: String) -> void:
+	var players: Array = _sfx_players.get(key, [])
+	if players.is_empty():
+		return
+	var i: int = int(_sfx_next.get(key, 0)) % players.size()
+	_sfx_next[key] = i + 1
+	(players[i] as AudioStreamPlayer).play()
 
 
 ## set_cells_terrain_connect 只会重算"传入的这些格子"的边缘，邻居不会自动刷新，
@@ -594,10 +653,12 @@ func _unhandled_input(event: InputEvent) -> void:
 					if has_grass and not has_soil and not has_wet and is_tillable(coord):
 						_apply_terrain(map_soil, coord, TERRAIN_SOIL)
 						empty_soil_days[coord] = 0
+						play_sfx("till")
 				Enums.ToolType.WATER_CAN:
 					# 干土 → 湿土：Soil 保留，WetSoil 作为 autotile 叠加在上面
 					if has_soil and not has_wet:
 						_apply_terrain(map_wet_soil, coord, TERRAIN_WET)
+						play_sfx("water")
 				Enums.ToolType.SEED:
 					# 干土或湿土都能种
 					if (has_soil or has_wet) and not crop_dict.has(coord):
@@ -607,6 +668,7 @@ func _unhandled_input(event: InputEvent) -> void:
 						crop.position = map_soil.map_to_local(coord)
 						crop_dict[coord] = crop
 						empty_soil_days.erase(coord)
+						play_sfx("sow")
 
 
 ## —— 隐藏调试面板（Ctrl+D）——

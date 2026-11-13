@@ -14,10 +14,6 @@ var name: String:
 @export var golden_chance: float = 0.0              ## 成熟时变成金花的概率（薄荷 0.03）
 @export var golden: Array[AtlasTexture]             ## 金花贴图（可为空）
 @export var yield_amount: int = 1                   ## 每次收获数量
-## true = 最后一帧本身就是"成熟可收"的形态（土豆：露出土面的那堆土豆），
-## 而不是"最后一帧只是收获瞬间的样子"。默认 false = 成果态取倒数第二帧。
-@export var matured_at_last_frame: bool = false
-
 ## —— 隐藏作物相关 ——
 @export var plantable: bool = true                  ## false = 不进种子栏（只能靠掉落获得）
 @export var hidden_until_obtained: bool = false     ## true = 收成栏里一开始完全隐形，拿到才显示

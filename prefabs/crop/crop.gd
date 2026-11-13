@@ -61,9 +61,7 @@ func last_stage() -> int:
 ## 可收获的"成果状态" = 倒数第二帧。最后一帧是"收获瞬间"的样子：
 ## 点下去先切到最后一帧，再从这一帧吸进对应的收成库存。
 func mature_stage() -> int:
-	# 土豆这类：最后一帧就是成熟形态（那堆露出来的土豆），没有单独的收获帧
-	if data != null and data.matured_at_last_frame:
-		return maxi(last_stage(), 0)
+	# 约定：最后一帧是成品（收获时的样子），田里始终停在它的前一帧
 	return maxi(last_stage() - 1, 0)
 
 
@@ -158,13 +156,15 @@ func harvest() -> void:
 	var amount: int = data.yield_amount * (2 if is_golden else 1)
 	Game.add_stock(data.name, amount)
 	# 隐藏作物掉落（带保底），比如薄荷有 3% 概率掉"蓝薄荷"
+	var got_hidden := false
 	if data.hidden_drop != "" and data.hidden_drop_chance > 0.0:
-		Game.roll_hidden_drop(data.hidden_drop, data.hidden_drop_chance)
+		got_hidden = Game.roll_hidden_drop(data.hidden_drop, data.hidden_drop_chance)
+	# 真掉出隐藏作物时换"收获隐藏作物"那一声，不用盯收成栏也知道中了
+	Game.play_sfx("harvest_hidden" if got_hidden else "harvest")
 
-	# 收获瞬间的形态
+	# 本体留在成果形态（成品只在飞行残影里出现，不落在土里）
 	ripe_days = 0
 	animation = data.name
-	frame = last_stage()
 	_update_offset()
 	_spawn_absorb_ghost()
 
@@ -180,13 +180,12 @@ func harvest() -> void:
 
 	gone = true
 	Game.crop_dict.erase(coord)
-	var fade := create_tween()
-	fade.tween_interval(0.1)
-	fade.tween_property(self, "modulate:a", 0.0, 0.22)
-	fade.tween_callback(queue_free)
+	# 立刻从土里拿掉：成品已经飞走了，土里不该留任何成品形态
+	visible = false
+	queue_free()
 
 
-## 生成一个"残影"从收获帧飞向对应的收成库存。
+## 生成一个"残影"从作物原位飞向对应的收成库存；残影用的就是"成品"（最后一帧）。
 ## 世界画在 SubViewport 里、库存栏在 HUD 的 CanvasLayer 里，所以残影挂到 HUD
 ## 层上并用画布坐标飞，否则会被子视口裁掉、飞不到栏目上。
 func _spawn_absorb_ghost() -> void:
@@ -194,7 +193,12 @@ func _spawn_absorb_ghost() -> void:
 	if target == null:
 		return
 
-	var texture := sprite_frames.get_frame_texture(animation, frame)
+	# 成品 = 生长动画的最后一帧（金花用金花贴图）
+	var texture: Texture2D = null
+	if is_golden and not data.golden.is_empty():
+		texture = data.golden[data.golden.size() - 1]
+	else:
+		texture = sprite_frames.get_frame_texture(animation, last_stage())
 	if texture == null:
 		return
 
@@ -220,8 +224,9 @@ func _spawn_absorb_ghost() -> void:
 	# 飞行途中保持不透明，**到达库存项之后**才淡出——半路淡掉玩家就看不出飞去哪了
 	var fly := ghost.create_tween()
 	fly.set_parallel(true)
+	# EASE_OUT：起步就窜出去，再缓入停在库存图标上
 	fly.tween_property(ghost, "global_position", dest, 0.5) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	fly.tween_property(ghost, "scale", Vector2(0.8, 0.8), 0.5)
 	fly.chain().tween_property(ghost, "modulate:a", 0.0, 0.12)
 	fly.chain().tween_callback(ghost.queue_free)
