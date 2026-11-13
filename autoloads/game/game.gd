@@ -38,6 +38,7 @@ const SFX_VOICES := 3
 var view_container: SubViewportContainer
 var view: SubViewport
 var world_root: Node2D
+var _daylight: CanvasModulate
 ## 世界整体在子视口里的平移量（负数表示向左/上推）
 var world_offset := Vector2.ZERO
 var field_rect := Rect2()
@@ -48,9 +49,9 @@ var bgm: AudioStreamPlayer
 ## 音效播放器：名字 → AudioStreamPlayer 数组；_sfx_next 记下一次轮到第几个
 var _sfx_players: Dictionary = {}
 var _sfx_next: Dictionary = {}
-## 隐藏作物：初始隐形的 UI 节点（crop_name → 节点数组），以及掉落保底计数
+## 初始隐形的库存项，以及每种作物的金花保底计数
 var _hidden_entries: Dictionary = {}
-var _drop_pity: Dictionary = {}
+var _golden_pity: Dictionary = {}
 
 signal tool_changed
 signal day_changed
@@ -76,6 +77,8 @@ var stock: Dictionary[String, int] = {}
 ## （Timer_Time 在 game.tscn 里，默认 1 秒一拍，所以 max_time = 30 就是 30 秒一天）
 ## 两个值都能在编辑器 Inspector 里直接改：Game 节点 → max_time；Timer_Time → wait_time
 @export var max_time: int = 30
+## 一天内的田地光色。渐变首尾用同一颜色，换天时才不会跳色。
+@export var daylight_gradient: Gradient
 var day: int = 1
 var time: int:
 	set(value):
@@ -130,6 +133,15 @@ func _ready() -> void:
 
 	time = 0
 	timer_time.timeout.connect(_on_tick)
+
+
+func _process(_delta: float) -> void:
+	if timer_time.is_stopped():
+		return
+	# 补上当前这一拍已经过去的时间，让光色在两拍之间也能渐变。
+	var tick_progress := clampf(1.0 - timer_time.time_left / timer_time.wait_time, 0.0, 1.0)
+	var day_progress := (time + tick_progress) / maxi(max_time, 1)
+	_daylight.color = daylight_gradient.sample(day_progress)
 
 
 ## 音效播放器在运行时建，不写进 game.tscn：换素材只改 SFX_FILES 一处。
@@ -305,6 +317,11 @@ func _build_view() -> void:
 	view.size = Vector2i(int(view_size.x), int(view_size.y))
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view_container.add_child(view)
+
+	_daylight = CanvasModulate.new()
+	_daylight.name = "Daylight"
+	_daylight.color = daylight_gradient.sample(0.0)
+	view.add_child(_daylight)
 
 	world_root = Node2D.new()
 	world_root.name = "WorldRoot"
@@ -513,21 +530,16 @@ func _reveal_hidden_entries(crop_name: String) -> void:
 	_hidden_entries.erase(crop_name)
 
 
-## 掉落隐藏作物，带假随机保底：概率 p 时每 ceil(1/p) 次必定爆一次
-## （p=0.03 → 34 次内必出；p=0.01 → 100 次内必出）
+## 播种时判定金花，每 ceil(1/p) 次播种至少种出一株金花。
 ## rng_value 用来在测试里注入确定值，<0 表示现掷
-func roll_hidden_drop(crop_name: String, chance: float, rng_value: float = -1.0) -> bool:
+func roll_golden_harvest(crop_name: String, chance: float, rng_value: float = -1.0) -> bool:
 	if crop_name == "" or chance <= 0.0:
 		return false
 	var pity_limit := maxi(1, ceili(1.0 / chance))
-	var tries: int = _drop_pity.get(crop_name, 0) + 1
+	var tries: int = _golden_pity.get(crop_name, 0) + 1
 	var roll: float = randf() if rng_value < 0.0 else rng_value
 	var hit: bool = roll < chance or tries >= pity_limit
-	if hit:
-		_drop_pity[crop_name] = 0
-		add_stock(crop_name, 1)
-	else:
-		_drop_pity[crop_name] = tries
+	_golden_pity[crop_name] = 0 if hit else tries
 	return hit
 
 
@@ -636,7 +648,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 
-			# 成熟作物：点一下收获（连种作物回到指定阶段，金花额外 +1）
+			# 成熟作物：点一下收获，金花进入对应的隐藏库存项。
 			# 枯萎作物：点一下渐隐消失（没有产出）
 			if crop_dict.has(coord):
 				var planted: Crop = crop_dict[coord]

@@ -24,9 +24,9 @@ func _ready() -> void:
 	_test_seedling_withers(crops["cabbage"])
 	_test_mushroom_repeat(crops["mushroom"])
 	_test_mint_repeat(crops["mint"])
-	_test_golden(crops["mint"])
 
 	_test_day_length()
+	await _test_daylight()
 	_test_ripe_withers()
 	_test_bgm()
 	_test_watered_soil_not_aging()
@@ -48,6 +48,25 @@ func _check(label: String, condition: bool, detail: String = "") -> void:
 	else:
 		fail_count += 1
 		print("  ✗ ", label, "  ", detail)
+
+
+func _test_daylight() -> void:
+	print("\n[昼夜光色]")
+	var daylight := Game.view.get_node(^"Daylight") as CanvasModulate
+	Game.timer_time.start()
+	Game._process(0.0)
+	var dawn := daylight.color
+	Game.time = 15
+	Game._process(0.0)
+	var sunset_start := daylight.color
+	await get_tree().create_timer(0.1).timeout
+	_check("黄昏在两拍之间渐变", Game.time == 15 and daylight.color.b < sunset_start.b)
+	Game.time = 25
+	Game._process(0.0)
+	_check("夜色更暗且偏蓝", daylight.color.get_luminance() < sunset_start.get_luminance()
+		and daylight.color.b > daylight.color.r)
+	_check("午夜衔接次日晨光", dawn.is_equal_approx(Game.daylight_gradient.sample(1.0)))
+	Game.time = 0
 
 
 func _make_soil(coord: Vector2i) -> void:
@@ -151,7 +170,10 @@ func _test_mushroom_repeat(data: CropData) -> void:
 func _test_mint_repeat(data: CropData) -> void:
 	print("\n[E] 薄荷连种")
 	var coord := Vector2i(4, 0)
+	var chance := data.golden_chance
+	data.golden_chance = 0.0
 	var crop := _plant(data, coord)
+	data.golden_chance = chance
 	for i in range(6):
 		_water(coord)
 		Game._end_day()
@@ -162,24 +184,6 @@ func _test_mint_repeat(data: CropData) -> void:
 	_check("薄荷有 3%% 金花概率", is_equal_approx(data.golden_chance, 0.03),
 		"golden_chance=%.2f" % data.golden_chance)
 	_check("金花贴图已配置", data.golden.size() == 2, "%d 张" % data.golden.size())
-
-
-# ── F. 金花：把概率临时设成 100% 验证流程 ─────────────────────────
-func _test_golden(data: CropData) -> void:
-	print("\n[F] 金花流程（概率临时 100%）")
-	var coord := Vector2i(5, 0)
-	var saved: float = data.golden_chance
-	data.golden_chance = 1.0
-	var crop := _plant(data, coord)
-	var before: int = Game.stock.get("mint", 0)
-	for i in range(6):
-		_water(coord)
-		Game._end_day()
-	_check("成熟时变金花", crop.is_golden == true)
-	crop.harvest()
-	_check("金花收获 +2", Game.stock.get("mint", 0) == before + 2,
-		"库存 %d → %d" % [before, Game.stock.get("mint", 0)])
-	data.golden_chance = saved
 
 
 # ── J. 一天的长度 = max_time 拍，正好 30 拍换一次天 ───────────────
@@ -352,7 +356,7 @@ func _test_bgm() -> void:
 	_check("正在播放", player.playing == true)
 
 
-# ── N. 隐藏作物：薄荷 3% 掉落、保底、库存项隐形 ─────────────────
+# ── N. 薄荷金花：播种时判定，收获后显示隐藏库存 ─────────────────
 func _test_hidden_crop() -> void:
 	print("\n[N] 隐藏作物（蓝薄荷）")
 	var blue: CropData = null
@@ -379,56 +383,87 @@ func _test_hidden_crop() -> void:
 
 	# 薄荷数据里确实挂了掉落
 	var mint_data: CropData = Game.crop_datas[4]
-	_check("薄荷挂了 bluemint 掉落", mint_data.hidden_drop == "bluemint" and
-		is_equal_approx(mint_data.hidden_drop_chance, 0.03),
-		"%s / %.2f" % [mint_data.hidden_drop, mint_data.hidden_drop_chance])
+	_check("薄荷金花对应隐藏项", mint_data.golden_harvest == blue.name)
 
 	# 保底：p=0.03 → ceil(1/0.03)=34 次内必爆；用 rng=0.99 让前 33 次都空
 	var p := 0.03
 	var limit := ceili(1.0 / p)
-	Game._drop_pity.erase("bluemint")   # 前面的薄荷收获也在攒保底，这里清零再测
-	var stock_before: int = Game.stock.get("bluemint", 0)
+	Game._golden_pity.erase(mint_data.name)
 	var hits := 0
 	var first_hit_at := -1
 	for i in range(limit):
-		if Game.roll_hidden_drop("bluemint", p, 0.99):
+		if Game.roll_golden_harvest(mint_data.name, p, 0.99):
 			hits += 1
 			if first_hit_at < 0:
 				first_hit_at = i + 1
 	_check("第 %d 次一定爆（保底）" % limit, hits == 1 and first_hit_at == limit,
 		"hits=%d first=%d" % [hits, first_hit_at])
-	_check("掉落进了库存", Game.stock.get("bluemint", 0) == stock_before + 1,
-		"库存 %d → %d" % [stock_before, Game.stock.get("bluemint", 0)])
-
-	await get_tree().create_timer(0.6).timeout
-	if label != null:
-		_check("拿到后收成项显现", label.modulate.a > 0.99, "alpha=%.2f" % label.modulate.a)
-
 	# 统计校验：1000 次里任意两次掉落的间隔不能超过保底次数
 	var gap := 0
 	var max_gap := 0
 	var total := 0
 	for i in range(1000):
 		gap += 1
-		if Game.roll_hidden_drop("bluemint", p):
+		if Game.roll_golden_harvest(mint_data.name, p):
 			max_gap = maxi(max_gap, gap)
 			gap = 0
 			total += 1
 	_check("1000 次内最大间隔 ≤ %d" % limit, max_gap <= limit,
 		"max_gap=%d，期间掉了 %d 次" % [max_gap, total])
 
-	# 薄荷收获确实会走掉落逻辑
-	var pity_before: int = Game._drop_pity.get("bluemint", 0)
+	Game._golden_pity[mint_data.name] = limit - 1
+	var stock_before: int = Game.stock.get(blue.name, 0)
+	var mint_before: int = Game.stock.get(mint_data.name, 0)
 	var coord := Vector2i(12, 0)
 	var crop := _plant(mint_data, coord)
+	_check("播种时触发金花保底", crop.is_golden and crop.frame == 0)
+	var chance := mint_data.golden_chance
+	mint_data.golden_chance = 0.0
+	var white := _plant(mint_data, Vector2i(12, 1))
+	mint_data.golden_chance = chance
 	for i in range(crop.mature_stage()):
 		_water(coord)
+		_water(white.coord)
 		Game._end_day()
+		if crop.frame == crop.mature_stage() - 1:
+			_check("金花成熟前显示专用茎，白花仍显示自己的茎", not crop.is_mature()
+				and crop.sprite_frames.get_frame_texture(crop.animation, crop.frame) == mint_data.golden_stem
+				and white.sprite_frames.get_frame_texture(white.animation, white.frame) != mint_data.golden_stem)
+	_check("金花和白花按播种结果成熟", crop.is_golden and crop.is_mature()
+		and not white.is_golden and white.is_mature())
+	_check("成熟时尚未入库", Game.stock.get(blue.name, 0) == stock_before)
+	var ghosts_before := _ghost_count()
 	crop.harvest()
-	var pity_after: int = Game._drop_pity.get("bluemint", 0)
-	_check("收获薄荷会掷一次掉落（保底计数变化或直接出货）",
-		pity_after != pity_before or Game.stock.get("bluemint", 0) > stock_before + 1,
-		"pity %d → %d" % [pity_before, pity_after])
+	_check("金花只增加隐藏库存", Game.stock.get(blue.name, 0) == stock_before + 1
+		and Game.stock.get(mint_data.name, 0) == mint_before)
+	_check("金花只生成一个飞入动画", _ghost_count() == ghosts_before + 1)
+	if label == null:
+		return
+	var ghost: Sprite2D
+	for child in Game.get_node(^"HudLayer").get_children():
+		if child is Sprite2D and child.texture == mint_data.golden.back():
+			ghost = child
+			break
+	_check("飞入动画使用金花贴图", ghost != null)
+	if ghost == null:
+		return
+	await get_tree().create_timer(0.53).timeout
+	var dest := label.rect_icon.get_global_rect().get_center()
+	var pos := ghost.global_position if is_instance_valid(ghost) else Vector2.INF
+	_check("金花飞向隐藏库存图标", is_instance_valid(ghost)
+		and ghost.visible and pos.distance_to(dest) < 3.0, "%s → %s" % [pos, dest])
+	_check("金花收获后隐藏项显现", label.modulate.a > 0.99)
+
+	var rolls_before := Game.dbg_rolls
+	for i in range(crop.frame, crop.mature_stage()):
+		_water(coord)
+		Game._end_day()
+	_check("金花连种仍开金花，生长时不重新判定", crop.is_golden and crop.is_mature()
+		and crop.sprite_frames.get_frame_texture(crop.animation, crop.frame) == mint_data.golden[0]
+		and Game.dbg_rolls == rolls_before)
+	white.harvest()
+	_check("白花只增加普通库存", Game.stock.get(blue.name, 0) == stock_before + 1
+		and Game.stock.get(mint_data.name, 0) == mint_before + 1)
 
 
 # ── O. 隐藏调试面板（Ctrl+D）：金花概率可调 + 实测统计 ─────────────
@@ -477,14 +512,15 @@ func _test_debug_panel() -> void:
 	Game._unhandled_input(close_key)
 	_check("再按一次 Ctrl+D 关闭", not Game.debug_panel.visible)
 
-	# 作物成熟时确实会掷一次并被统计
+	# 播种时计入一次，成熟时不再掷。
 	var coord := Vector2i(13, 0)
-	var crop := _plant(mint_data, coord)
 	var before := Game.dbg_rolls
+	var crop := _plant(mint_data, coord)
+	_check("播种时掷一次并计入统计", Game.dbg_rolls == before + 1)
 	for i in range(crop.mature_stage()):
 		_water(coord)
 		Game._end_day()
-	_check("薄荷成熟时掷了一次并计入统计", Game.dbg_rolls == before + 1,
+	_check("成熟时不再掷金花", Game.dbg_rolls == before + 1,
 		"%d → %d" % [before, Game.dbg_rolls])
 
 
