@@ -1,3 +1,42 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:c0fcc0aaeba6820a106f5e37346c1c719e7504c6681c8b3431f3ec51c7deb307
-size 1468
+[gd_resource type="Resource" script_class="CropData" format=3 uid="uid://cyk7ofeg0y3tf"]
+
+[ext_resource type="Texture2D" uid="uid://ddqm5sdra873y" path="res://assets/sprites/crops_veg.png" id="1_tex"]
+[ext_resource type="Script" uid="uid://ntdshv0x0gix" path="res://data/_models/crop_data.gd" id="2_script"]
+
+[sub_resource type="AtlasTexture" id="icon"]
+atlas = ExtResource("1_tex")
+region = Rect2(32, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_0"]
+atlas = ExtResource("1_tex")
+region = Rect2(64, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_1"]
+atlas = ExtResource("1_tex")
+region = Rect2(96, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_2"]
+atlas = ExtResource("1_tex")
+region = Rect2(128, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_3"]
+atlas = ExtResource("1_tex")
+region = Rect2(160, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_4"]
+atlas = ExtResource("1_tex")
+region = Rect2(192, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_5"]
+atlas = ExtResource("1_tex")
+region = Rect2(224, 112, 16, 16)
+
+[sub_resource type="AtlasTexture" id="wither"]
+atlas = ExtResource("1_tex")
+region = Rect2(225, 19, 13, 13)
+
+[resource]
+script = ExtResource("2_script")
+icon = SubResource("icon")
+stages = Array[AtlasTexture]([SubResource("stage_0"), SubResource("stage_1"), SubResource("stage_2"), SubResource("stage_3"), SubResource("stage_4"), SubResource("stage_5")])
+withered = SubResource("wither")

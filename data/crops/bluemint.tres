@@ -1,3 +1,24 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:0285518fbd1d3be049e671471407f1918983f10145abc176c8eed937de451f59
-size 835
+[gd_resource type="Resource" script_class="CropData" format=3 uid="uid://byi01sk7bkjoe"]
+
+[ext_resource type="Texture2D" uid="uid://ddqm5sdra873y" path="res://assets/sprites/crops_veg.png" id="1_veg"]
+[ext_resource type="Script" uid="uid://ntdshv0x0gix" path="res://data/_models/crop_data.gd" id="2_script"]
+
+[sub_resource type="AtlasTexture" id="icon"]
+atlas = ExtResource("1_veg")
+region = Rect2(0, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="stage_0"]
+atlas = ExtResource("1_veg")
+region = Rect2(0, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="wither"]
+atlas = ExtResource("1_veg")
+region = Rect2(225, 19, 13, 13)
+
+[resource]
+script = ExtResource("2_script")
+icon = SubResource("icon")
+stages = Array[AtlasTexture]([SubResource("stage_0")])
+withered = SubResource("wither")
+plantable = false
+hidden_until_obtained = true
