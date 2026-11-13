@@ -7,6 +7,10 @@
 atlas = ExtResource("1_tex")
 region = Rect2(288, 144, 16, 16)
 
+[sub_resource type="AtlasTexture" id="golden_stem"]
+atlas = ExtResource("1_tex")
+region = Rect2(288, 112, 16, 16)
+
 [sub_resource type="AtlasTexture" id="golden_1"]
 atlas = ExtResource("1_tex")
 region = Rect2(320, 144, 16, 16)
@@ -55,6 +59,6 @@ withered = SubResource("wither")
 repeat_harvest = true
 reset_stage = 3
 golden_chance = 0.03
+golden_stem = SubResource("golden_stem")
 golden = Array[AtlasTexture]([SubResource("golden_0"), SubResource("golden_1")])
-hidden_drop = "bluemint"
-hidden_drop_chance = 0.03
+golden_harvest = "bluemint"

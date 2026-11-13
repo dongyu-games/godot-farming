@@ -52,6 +52,7 @@ func setup(crop_data: CropData, cell: Vector2i) -> void:
 	animation = data.name
 	frame = 0
 	z_index = 1
+	_roll_golden()
 
 
 func last_stage() -> int:
@@ -92,7 +93,6 @@ func advance_day() -> void:
 		dry_days = 0
 		if frame < mature_stage():
 			frame += 1
-			_roll_golden()
 	else:
 		dry_days += 1
 		if dry_days >= DRY_DAYS_TO_DIE:
@@ -103,20 +103,23 @@ func advance_day() -> void:
 
 
 func _roll_golden() -> void:
-	if not is_mature() or data.golden_chance <= 0.0 or data.golden.is_empty():
+	if data.golden_chance <= 0.0 or data.golden.is_empty():
 		return
-	var hit := randf() < data.golden_chance
+	var hit: bool = Game.roll_golden_harvest(data.name, data.golden_chance)
 	# 调试面板统计：每次真实掷骰都记一笔（分母可在 Ctrl+D 面板里改）
 	Game.debug_register_golden_roll(hit)
 	if not hit:
 		return
 	is_golden = true
-	# 只改这一株：SpriteFrames 是场景里的共享资源，直接 set_frame 会把
-	# 所有同种作物的成果帧都变成金花，所以先复制一份再改。
+	# 给这一株设置金花的茎和成熟外观，连种时沿用同一套生长帧。
+	var mature := mature_stage()
 	var own: SpriteFrames = sprite_frames.duplicate()
-	own.set_frame(data.name, mature_stage(), data.golden[0])
+	if data.golden_stem != null and mature > 1:
+		own.set_frame(data.name, mature - 1, data.golden_stem)
+	own.set_frame(data.name, mature, data.golden[0])
 	sprite_frames = own
-	frame = mature_stage()
+	animation = data.name
+	frame = 0
 
 
 func _wither() -> void:
@@ -147,30 +150,28 @@ func _disappear() -> void:
 	tween.tween_callback(queue_free)
 
 
-## 收获：先把本体切到最后一帧（"收下来了"的样子），再从这一帧生个残影吸进
-## 对应的收成库存；一次性作物随后淡出消失，连种作物回到重置阶段继续长。
+## 收获时，成品飞向对应库存；连种作物回到重置阶段继续长。
 func harvest() -> void:
 	if gone or is_withered:
 		return
 
-	var amount: int = data.yield_amount * (2 if is_golden else 1)
-	Game.add_stock(data.name, amount)
-	# 隐藏作物掉落（带保底），比如薄荷有 3% 概率掉"蓝薄荷"
-	var got_hidden := false
-	if data.hidden_drop != "" and data.hidden_drop_chance > 0.0:
-		got_hidden = Game.roll_hidden_drop(data.hidden_drop, data.hidden_drop_chance)
-	# 真掉出隐藏作物时换"收获隐藏作物"那一声，不用盯收成栏也知道中了
-	Game.play_sfx("harvest_hidden" if got_hidden else "harvest")
+	var hidden_harvest := is_golden and not data.golden_harvest.is_empty()
+	var stock_name := data.golden_harvest if hidden_harvest else data.name
+	var amount := 1 if hidden_harvest else data.yield_amount * (2 if is_golden else 1)
+	Game.add_stock(stock_name, amount)
+	Game.play_sfx("harvest_hidden" if hidden_harvest else "harvest")
 
 	# 本体留在成果形态（成品只在飞行残影里出现，不落在土里）
 	ripe_days = 0
 	animation = data.name
 	_update_offset()
-	_spawn_absorb_ghost()
+	var product := sprite_frames.get_frame_texture(animation, last_stage())
+	if is_golden and not data.golden.is_empty():
+		product = data.golden[data.golden.size() - 1]
+	_spawn_absorb_ghost(Game.stock_pool.get_node_or_null(NodePath(stock_name)), product)
 
 	if data.repeat_harvest:
 		# 连种：残影负责飞，本体立刻回到重置阶段（否则下一个生长日会从"收获帧"继续）
-		is_golden = false
 		frame = clampi(data.reset_stage, 0, maxi(mature_stage() - 1, 0))
 		_update_offset()
 		var pop := create_tween()
@@ -185,21 +186,11 @@ func harvest() -> void:
 	queue_free()
 
 
-## 生成一个"残影"从作物原位飞向对应的收成库存；残影用的就是"成品"（最后一帧）。
+## 生成一个残影，从作物原位飞向对应的库存图标。
 ## 世界画在 SubViewport 里、库存栏在 HUD 的 CanvasLayer 里，所以残影挂到 HUD
 ## 层上并用画布坐标飞，否则会被子视口裁掉、飞不到栏目上。
-func _spawn_absorb_ghost() -> void:
-	var target: Node = Game.stock_pool.get_node_or_null(NodePath(data.name))
-	if target == null:
-		return
-
-	# 成品 = 生长动画的最后一帧（金花用金花贴图）
-	var texture: Texture2D = null
-	if is_golden and not data.golden.is_empty():
-		texture = data.golden[data.golden.size() - 1]
-	else:
-		texture = sprite_frames.get_frame_texture(animation, last_stage())
-	if texture == null:
+func _spawn_absorb_ghost(target: StockLabel, texture: Texture2D) -> void:
+	if target == null or texture == null:
 		return
 
 	var hud: Node = Game.get_node_or_null(^"HudLayer")
@@ -216,17 +207,14 @@ func _spawn_absorb_ghost() -> void:
 		ghost.global_position = global_position
 		Game.crop_pool.add_child(ghost)
 
-	var dest: Vector2 = target.global_position + Vector2(4, 4)
-	# 落到库存图标正中：玩家的眼睛要能跟着它走到"哪个格子"
-	var icon := target.get_node_or_null(^"Icon") as Control
-	if icon != null:
-		dest = icon.global_position + icon.size * 0.5
+	var start := ghost.global_position
 	# 飞行途中保持不透明，**到达库存项之后**才淡出——半路淡掉玩家就看不出飞去哪了
 	var fly := ghost.create_tween()
-	fly.set_parallel(true)
 	# EASE_OUT：起步就窜出去，再缓入停在库存图标上
-	fly.tween_property(ghost, "global_position", dest, 0.5) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	fly.tween_property(ghost, "scale", Vector2(0.8, 0.8), 0.5)
-	fly.chain().tween_property(ghost, "modulate:a", 0.0, 0.12)
-	fly.chain().tween_callback(ghost.queue_free)
+	# 库存数字变化时会重新布局，每帧取图标位置，确保飞到更新后的位置。
+	fly.tween_method(func(weight: float) -> void:
+		ghost.global_position = start.lerp(target.rect_icon.get_global_rect().get_center(), weight),
+		0.0, 1.0, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	fly.parallel().tween_property(ghost, "scale", Vector2(0.8, 0.8), 0.5)
+	fly.tween_property(ghost, "modulate:a", 0.0, 0.12)
+	fly.tween_callback(ghost.queue_free)

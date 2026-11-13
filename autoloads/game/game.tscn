@@ -27,6 +27,10 @@ bg_color = Color(1, 1, 1, 1)
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_8bnik"]
 bg_color = Color(0.37413922, 0.37413928, 0.37413913, 1)
 
+[sub_resource type="Gradient" id="Gradient_daylight"]
+offsets = PackedFloat32Array(0, 0.16, 0.5, 0.65, 0.79, 0.91, 1)
+colors = PackedColorArray(0.78, 0.68, 0.67, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.78, 0.58, 1, 0.36, 0.36, 0.88, 1, 0.36, 0.36, 0.88, 1, 0.78, 0.68, 0.67, 1)
+
 [node name="Game" type="Node2D" unique_id=288874837 node_paths=PackedStringArray("map_grass", "map_soil", "map_wet_soil", "tool_selection_pool", "seed_selection_pool", "crop_pool", "progress_time", "timer_time", "stock_pool", "position_hint")]
 script = ExtResource("1_feb5d")
 map_grass = NodePath("Grass")
@@ -40,6 +44,7 @@ progress_time = NodePath("CanvasLayer/MarginContainer/Control/ProgressBar_Time")
 timer_time = NodePath("Timer_Time")
 stock_pool = NodePath("CanvasLayer/MarginContainer/Control/StockPool")
 position_hint = NodePath("CanvasLayer2/PositionHint")
+daylight_gradient = SubResource("Gradient_daylight")
 
 [node name="Timer_Time" type="Timer" parent="." unique_id=1858587462]
 autostart = true

@@ -13,13 +13,14 @@ func _ready() -> void:
 
 	print("[A] 各作物的成果状态 = 倒数第二帧")
 	for data in Game.crop_datas:
-		var crop := _spawn_prefab(data)
 		if not data.plantable:
 			# 隐藏作物不可种植，crop.tscn 里本来就没有它的动画
+			var crop: Crop = Prefabs.crop.instantiate()
 			_check("%s: 不可种植、没有生长动画" % data.name,
 				not crop.sprite_frames.has_animation(data.name))
 			crop.free()
 			continue
+		var crop := _spawn_prefab(data)
 		var last := crop.last_stage()
 		var mature := crop.mature_stage()
 		_check("%s: 成果帧 = %d（最后一帧 %d 是成品）" % [data.name, mature, last],
@@ -136,18 +137,19 @@ func _ready() -> void:
 	print("\n[E] 金花只改本株，不影响同种其它作物")
 	var mint: CropData = Game.crop_datas[4]
 	var saved := mint.golden_chance
+	mint.golden_chance = 0.0
+	var cb := _plant(mint, Vector2i(13, 2))
 	mint.golden_chance = 1.0
 	var ca := _plant(mint, Vector2i(12, 2))
-	var cb := _plant(mint, Vector2i(13, 2))
-	var shared_before: SpriteFrames = ca.sprite_frames
+	mint.golden_chance = saved
 	for i in range(7):
 		_water(Vector2i(12, 2))
 		_water(Vector2i(13, 2))
 		Game._end_day()
 	print("   a: golden=", ca.is_golden, " frames_same_resource=", ca.sprite_frames == cb.sprite_frames)
 	_check("两株都到成果帧/或成熟", ca.is_mature() and cb.is_mature())
-	_check("金花株拥有独立 SpriteFrames", ca.sprite_frames != shared_before or not ca.is_golden)
-	mint.golden_chance = saved
+	_check("金花株拥有独立 SpriteFrames", ca.is_golden and not cb.is_golden
+		and ca.sprite_frames != cb.sprite_frames)
 	Game.crop_dict.erase(Vector2i(12, 2))
 	Game.crop_dict.erase(Vector2i(13, 2))
 
