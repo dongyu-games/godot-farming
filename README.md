@@ -39,6 +39,7 @@ Open `project.godot` with [Godot 4.7](https://godotengine.org) and press F5. Exp
 * **Director**: Snowy YANG
 * **Programmer**: Kottalo
 * **Artist**: 像素虚空
+* **Sound Effects**: 奇亿音乐团队
 * **Editor addon**: "Edit Resources as Table" by Gennady "Don Tnowe" Krupenyov
 
 ## License
